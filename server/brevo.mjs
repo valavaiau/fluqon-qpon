@@ -1,0 +1,12 @@
+// Marketing campaigns stay drafts for operator review in Brevo. Never auto-send.
+const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export function campaignContent(offers){
+ return '<html><body style="margin:0;background:#0E1012;color:#F3F4F6;font-family:Arial,sans-serif;padding:28px"><h1>fluqon.qpon</h1><p>Fluke on Coupon.</p><p>Checked offers. Retailer terms still apply. Recheck the live page before buying.</p>'+offers.slice(0,12).map(o=>'<section style="border:1px solid #2A2F35;padding:18px;margin:18px 0"><p>'+esc(o.retailer)+'</p><h2>'+esc(o.title)+'</h2><p style="font-family:monospace;color:#D4FF00">'+esc(o.discount)+'</p><p>'+esc(o.conditions)+'</p><p><a style="color:#D4FF00" href="https://fluqon.qpon/offers/'+esc(o.id)+'">Check the offer ↗</a></p></section>').join('')+'<p><a style="color:#D4FF00" href="{{ unsubscribe }}">unsubscribe.fluq_</a> — leave at any time.</p><p><a style="color:#8A929B" href="https://valavai.au/">James-Anthony Gregory Giorlando</a> trading as <a style="color:#8A929B" href="https://polymathfactor.app/">fluqon qpon</a>.<br>ABN 67 546 382 618<br>sayvon@fluqon.qpon</p><p><a style="color:#8A929B" href="https://fluqon.qpon/privacy">Privacy</a></p></body></html>';
+}
+export async function draftCampaign(env,offers){
+ if(!env.BREVO_API_KEY||!env.BREVO_LIST_ID||!env.BREVO_SENDER||env.EMAIL_DELIVERY_TESTED!=='true')return {error:'Brevo is not connected and delivery-tested yet.',status:503};
+ if(!offers.length)return {error:'No current checked offers to include.',status:400};
+ const response=await fetch('https://api.brevo.com/v3/emailCampaigns',{method:'POST',headers:{'api-key':env.BREVO_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({name:'fluqon.qpon '+new Date().toISOString(),type:'classic',sender:{email:env.BREVO_SENDER,name:'fluqon.qpon'},subject:offers.length+' checked offers — fluqon.qpon',previewText:'Fluke on Coupon. Read the conditions, then check the checkout.',htmlContent:campaignContent(offers),recipients:{listIds:[Number(env.BREVO_LIST_ID)]},replyTo:'sayvon@fluqon.qpon',mirrorActive:false,inlineImageActivation:false}),signal:AbortSignal.timeout(10000)});
+ if(!response.ok)return {error:'Brevo could not prepare this draft. Nothing was sent.',status:503};
+ const result=await response.json();return {ok:true,id:result.id,message:'Alert draft '+result.id+' prepared in Brevo. Review its offers, recipients, unsubscribe link and tracking settings before sending.'};
+}

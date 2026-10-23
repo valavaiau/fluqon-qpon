@@ -1,0 +1,26 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), clipboard-write=(self), web-share=(self)
+  Strict-Transport-Security: max-age=31536000
+  Content-Security-Policy: default-src 'self'; manifest-src 'self'; worker-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
+/assets/brand/social-share-v1.png
+  Cache-Control: public, max-age=86400
+
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+/manifest.webmanifest
+  Content-Type: application/manifest+json; charset=utf-8
+  Cache-Control: no-cache
+
+/operator
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+/subscription
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+
+/favicon.ico
+  Cache-Control: no-cache

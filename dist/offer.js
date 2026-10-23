@@ -1,0 +1,2 @@
+'use strict';
+(()=>{const button=document.querySelector('#copy-offer');if(!button.dataset.code){button.hidden=true;return;}button.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(button.dataset.code);button.textContent='COPIED!';document.querySelector('#offer-status').textContent='Code copied. Check the merchant’s conditions.';}catch{document.querySelector('#offer-status').textContent='Clipboard unavailable. Select and copy the visible code.';}});})();

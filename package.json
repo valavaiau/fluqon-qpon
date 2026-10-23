@@ -1,0 +1,17 @@
+{
+  "name": "fluqon-community",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "build": "python3 server/build.py",
+    "test": "node --test tests/*.test.mjs",
+    "preview": "node scripts/preview.mjs",
+    "check:release": "node scripts/check-release.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.11",
+    "@cloudflare/workers-types": "5.20261023.1"
+  }
+}

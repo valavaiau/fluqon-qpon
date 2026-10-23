@@ -1,0 +1,30 @@
+begin;
+do $$
+declare k text;v jsonb;token text;r_id text;
+begin
+ select key_hash into k from fluqon_private.gateway_config;
+ v:=public.fluqon_gateway(repeat('0',64),'feed');if v->>'status'<>'401' then raise exception 'Invalid gateway key accepted';end if;
+ v:=public.fluqon_gateway(k,'save_offer',jsonb_build_object('id','deployment-check','retailer','TEST ONLY','category','tech','title','Deployment workflow check','discount','TEST','merchant_url','https://example.com/','conditions','Deployment test. Not a genuine offer.','expires_at',now()+interval '1 day'));
+ if not coalesce((v->>'ok')::boolean,false) then raise exception 'Draft save failed: %',v;end if;
+ v:=public.fluqon_gateway(k,'publish_offer','{"id":"deployment-check"}');if not v?'error' then raise exception 'Unchecked draft published';end if;
+ v:=public.fluqon_gateway(k,'feed');if exists(select 1 from jsonb_array_elements(v->'offers') x where x->>'id'='deployment-check') then raise exception 'Draft leaked';end if;
+ v:=public.fluqon_gateway(k,'check_offer','{"id":"deployment-check","method":"checkout","result":"working","source_url":"https://example.com/","evidence":"Deployment test only; transaction will roll back.","reviewer":"Automated deployment test"}');if not coalesce((v->>'ok')::boolean,false) then raise exception 'Check failed: %',v;end if;
+ v:=public.fluqon_gateway(k,'publish_offer','{"id":"deployment-check"}');if not coalesce((v->>'ok')::boolean,false) then raise exception 'Checked publish failed: %',v;end if;
+ v:=public.fluqon_gateway(k,'feed');if not exists(select 1 from jsonb_array_elements(v->'offers') x where x->>'id'='deployment-check') then raise exception 'Published offer absent';end if;
+ update fluqon_private.offers set checked_at=now()-interval '25 hours' where id='deployment-check';v:=public.fluqon_gateway(k,'feed');if exists(select 1 from jsonb_array_elements(v->'offers') x where x->>'id'='deployment-check') then raise exception 'Stale check remained live';end if;
+ update fluqon_private.offers set checked_at=now(),glitch=true where id='deployment-check';v:=public.fluqon_gateway(k,'check_offer','{"id":"deployment-check","method":"merchant","result":"working","source_url":"https://example.com/","evidence":"Test only","reviewer":"Test"}');if not v?'error' then raise exception 'Merchant-only glitch accepted';end if;
+ v:=public.fluqon_gateway(k,'report','{"offer_id":"deployment-check","page_path":"/offers/deployment-check","reason":"code_failed","details":"Deployment test only."}',repeat('a',64));r_id:=v->>'reference';if r_id is null then raise exception 'Report not stored: %',v;end if;
+ if (select status from fluqon_private.offers where id='deployment-check')<>'published' then raise exception 'Report changed offer automatically';end if;
+ v:=public.fluqon_gateway(k,'resolve_report',jsonb_build_object('id',r_id,'status','resolved','resolution','Deployment test reviewed.'));if not coalesce((v->>'ok')::boolean,false) then raise exception 'Report review failed';end if;
+ perform public.fluqon_gateway(k,'report','{"page_path":"/","reason":"other"}',repeat('b',64)) from generate_series(1,5);
+ v:=public.fluqon_gateway(k,'report','{"page_path":"/","reason":"other"}',repeat('b',64));if v->>'status'<>'429' then raise exception 'Report limit failed';end if;
+ v:=public.fluqon_gateway(k,'subscribe','{"email":"deployment-test@example.com","consent":false,"consent_version":"2026-10-19"}',repeat('c',64));if not v?'error' then raise exception 'Consent bypass';end if;
+ v:=public.fluqon_gateway(k,'subscribe','{"email":"deployment-test@example.com","consent":true,"consent_version":"2026-10-19"}',repeat('c',64));token:=v->>'confirmToken';if token is null then raise exception 'Confirmation token absent: %',v;end if;
+ if exists(select 1 from subscriber_private.subscription_tokens where token_hash=token) then raise exception 'Raw token stored';end if;
+ v:=public.fluqon_gateway(k,'confirm',jsonb_build_object('token',token));if v->>'email'<>'deployment-test@example.com' then raise exception 'Confirm failed: %',v;end if;
+ v:=public.fluqon_gateway(k,'provider_unsubscribe','{"email":"deployment-test@example.com"}');
+ v:=public.fluqon_gateway(k,'confirm',jsonb_build_object('token',token));if not v?'error' then raise exception 'Unsubscribed confirmation replay accepted';end if;
+ if has_function_privilege('anon','public.fluqon_gateway(text,text,jsonb,text)','execute') or has_function_privilege('authenticated','public.fluqon_gateway(text,text,jsonb,text)','execute') then raise exception 'RPC visitor access';end if;
+ raise notice 'PASS: drafts, verification, publication, stale-check removal, glitch rules, real reports, moderation, rate limit, consent, token hashing, confirmation, suppression and denied direct access.';
+end $$;
+rollback;

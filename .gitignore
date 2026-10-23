@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.dev.vars
+.wrangler/
+coverage/
+test-results/
+*.zip
+*.tar.gz
+*.log
+.DS_Store

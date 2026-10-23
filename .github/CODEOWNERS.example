@@ -1,0 +1,5 @@
+# Replace with the actual GitHub maintainer/team before enforcing reviews.
+# * @your-maintainer
+# /server/ @your-security-maintainer
+# /database/ @your-security-maintainer
+# /.github/ @your-security-maintainer

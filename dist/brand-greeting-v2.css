@@ -1,0 +1,22 @@
+.eunisys-greeting{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;overflow:hidden;pointer-events:none;contain:layout paint;background:#f6f3eb;animation:eunisys-uncover 2s ease-in-out both}
+.eunisys-greeting-mark{display:block;position:static!important;width:min(76vw,520px)!important;height:auto!important;max-height:64svh;object-fit:contain;opacity:0;transform-origin:center;animation:eunisys-mark 2s cubic-bezier(.4,0,.2,1) both;will-change:transform,opacity,filter}
+.greeting-grandaus .eunisys-greeting-mark{width:min(62vw,340px)!important}
+.greeting-fullmast{background:linear-gradient(115deg,#ff007f,#ff4f4f 54%,#ff6600)}
+.greeting-fullmast .eunisys-greeting-mark{width:min(82vw,620px)!important;animation-name:eunisys-rise}
+.greeting-polymath{background:#fff}
+.greeting-polymath .eunisys-greeting-mark{width:min(82vw,620px)!important}
+.greeting-webiiiio{background:#0b0b0f}
+.greeting-webiiiio .eunisys-greeting-mark{max-width:82vw!important;aspect-ratio:1259/392;animation-name:eunisys-soft}
+.greeting-qaura{background:#fff9f2}
+.greeting-qaura .eunisys-greeting-mark{width:min(54vw,270px)!important;animation-name:eunisys-soft}
+.greeting-fluqon{background:#0e1012}
+.greeting-fluqon .eunisys-greeting-mark{width:min(76vw,440px)!important}
+.wordmark-home{display:flex;align-items:center;min-width:0;max-width:78vw;text-decoration:none}
+.wordmark-home:focus-visible{outline:2px solid currentColor;outline-offset:8px}
+@keyframes eunisys-uncover{0%,48%{opacity:1}100%{opacity:0;visibility:hidden}}
+@keyframes eunisys-mark{0%{opacity:0;transform:scale(.92);filter:blur(3px)}24%,50%{opacity:1;transform:scale(1);filter:blur(0)}100%{opacity:0;transform:scale(3.8);filter:blur(12px)}}
+@keyframes eunisys-rise{0%{opacity:0;transform:translateY(20px) scale(.94)}26%,50%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-20px) scale(3.5)}}
+@keyframes eunisys-soft{0%{opacity:0;transform:scale(.96);filter:blur(6px)}30%,52%{opacity:1;transform:scale(1);filter:blur(0)}100%{opacity:0;transform:scale(2.8);filter:blur(14px)}}
+@media(prefers-reduced-motion:reduce){.eunisys-greeting{display:none!important}}
+html[data-motion=off] .eunisys-greeting{display:none!important}
+@media print{.eunisys-greeting{display:none!important}}

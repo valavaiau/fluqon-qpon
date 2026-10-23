@@ -1,0 +1,30 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 5.20261023.1
+        version: 5.20261023.1
+      '@electric-sql/pglite':
+        specifier: 0.5.11
+        version: 0.5.11
+
+packages:
+
+  '@cloudflare/workers-types@5.20261023.1':
+    resolution: {integrity: sha512-jRaMsWUF/08dd0dWnX3zPGPOjakkkA2JPnK5vLsCQFmYC40kbMPZ02fvOPO8kqjqgljoMZrKsRiXpR1u1Lp0Qg==}
+
+  '@electric-sql/pglite@0.5.11':
+    resolution: {integrity: sha512-SWuqsTjA4DDWqgZ05PC1RJaq8e00p5KACxbqaikDFQ8dIGA0SLRzuPniky7IW+q/c5RDNMdEXwv7mFBWIx9Hxw==}
+
+snapshots:
+
+  '@cloudflare/workers-types@5.20261023.1': {}
+
+  '@electric-sql/pglite@0.5.11': {}

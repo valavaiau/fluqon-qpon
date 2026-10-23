@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "include": [
+    "/api/*",
+    "/offers/*",
+    "/s/*",
+    "/feed.xml",
+    "/report*",
+    "/subscribe*",
+    "/contribute*",
+    "/community-review*",
+    "/history*",
+    "/community-guide*"
+  ],
+  "exclude": []
+}

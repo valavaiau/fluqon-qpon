@@ -1,4 +1,4 @@
-import {readFile,readdir} from 'node:fs/promises';import {spawnSync} from 'node:child_process';import assert from 'node:assert/strict';
+import {readFile,readdir} from 'node:fs/promises';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';import assert from 'node:assert/strict';
 const root=new URL('../',import.meta.url),files=[];
 async function scan(dir=''){
  for(const item of await readdir(new URL(dir,root),{withFileTypes:true})){
@@ -14,7 +14,7 @@ for(const path of files){
   assert(!/\/Users\/|sb_secret_[A-Za-z0-9_-]{15,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(text),'Private path or credential pattern: '+path);checks++;
  }
  if(/\.(mjs|js|cjs)$/.test(path)){
-  const checked=spawnSync(process.execPath,['--check',new URL(path,root).pathname],{encoding:'utf8'});assert.equal(checked.status,0,checked.stderr);checks++;
+  const checked=spawnSync(process.execPath,['--check',fileURLToPath(new URL(path,root))],{encoding:'utf8'});assert.equal(checked.status,0,checked.stderr);checks++;
  }
 }
 const sql=await readFile(new URL('database/community.sql',root),'utf8');

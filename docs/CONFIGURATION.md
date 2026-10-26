@@ -8,6 +8,8 @@ COMMUNITY_ENABLED and COMMUNITY_LICENCE_ACCEPTED must both be true before commun
 
 When contributor sign-in is open, Supabase authenticates contributors and the configured Brevo SMTP sender delivers their requested email codes. Use the numeric-code email template and check actual delivery, sign-in, refresh, logout and blocked-account behaviour before opening it. Account requests and private contribution retention use the restricted manual procedure in [COMMUNITY-PRIVACY.md](COMMUNITY-PRIVACY.md); do not assume deleting an Auth user removes community records.
 
+Brevo per-contact pixel-tracking consent is enabled with unknown consent treated as No. Do not request tracking consent as part of contributor sign-in. This turns personal open/click tracking off by default; it does not promise that supplier-inserted measurement images or rewritten links are absent. Brevo still holds delivery records and may perform aggregate delivery measurement. Check actual delivered message content as well as the account settings; see [supplier email measurement](COMMUNITY-PRIVACY.md#supplier-email-measurement).
+
 The existing owner key authenticates the review desk. Its hash is ADMIN_KEY_HASH; the original value stays in the owner’s private configuration. No key is stored in frontend storage or this repository.
 
 API_GATEWAY_KEY identifies the Pages-to-Edge boundary. The Edge function retains its Supabase service role in its own environment and verifies gateway authorisation. Its SQL community RPC also checks the gateway hash and has EXECUTE revoked from PUBLIC, anon and authenticated. A verified contributor identity is attached server-side. The SQL function’s privileged execution is deliberate and narrowly restricted; do not make it a browser API.

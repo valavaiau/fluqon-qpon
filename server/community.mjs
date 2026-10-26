@@ -9,6 +9,32 @@ function sessionResponse(data,result){
  if(typeof result.access_token!=='string'||typeof result.refresh_token!=='string'||result.access_token.length>8192||result.refresh_token.length>8192)throw new InputError('Sign-in is temporarily unavailable.',503);
  const response=answer(data);response.headers.append('Set-Cookie',cookie(ACCESS,result.access_token,Math.min(Number(result.expires_in)||3600,3600)));response.headers.append('Set-Cookie',cookie(REFRESH,result.refresh_token,86400));return response;
 }
+async function signout(request,env,send){
+ const stored=cookies(request);
+ const finish=(data,status=200)=>{const response=answer(data,status);response.headers.append('Set-Cookie',cookie(ACCESS,'',0));response.headers.append('Set-Cookie',cookie(REFRESH,'',0));return response;};
+ const read=name=>{try{const value=decodeURIComponent(stored[name]||'');return value&&value.length<=8192?value:'';}catch{return '';}};
+ let access=read(ACCESS);const refresh=read(REFRESH);
+ if(!stored[ACCESS]&&!stored[REFRESH])return finish({ok:true,localSignedOut:true,providerRevoked:false,message:'Signed out of this browser.'});
+ try{
+  if(!env.SUPABASE_PUBLISHABLE_KEY)throw new Error('auth_unconfigured');
+  const revoke=async token=>send(settingURL(env,'SUPABASE_URL','/auth/v1/logout?scope=local'),{method:'POST',headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000),redirect:'error'});
+  if(access){
+   const response=await revoke(access),accepted=response.ok,retry=response.status===401||response.status===403;await response.body?.cancel();
+   if(accepted)return finish({ok:true,localSignedOut:true,providerRevoked:true,message:'Signed out.'});
+   if(!retry||!refresh)throw new Error('logout_unconfirmed');
+  }
+  if(!refresh)throw new Error('refresh_unavailable');
+  const response=await send(settingURL(env,'SUPABASE_URL','/auth/v1/token?grant_type=refresh_token'),{method:'POST',headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh}),signal:AbortSignal.timeout(10000),redirect:'error'});
+  const renewed=await limitedJSON(response);
+  if(typeof renewed.access_token!=='string'||!renewed.access_token||renewed.access_token.length>8192)throw new Error('refresh_invalid');
+  access=renewed.access_token;
+  const revoked=await revoke(access),accepted=revoked.ok;await revoked.body?.cancel();
+  if(!accepted)throw new Error('logout_unconfirmed');
+  return finish({ok:true,localSignedOut:true,providerRevoked:true,message:'Signed out.'});
+ }catch{
+  return finish({ok:false,localSignedOut:true,providerRevoked:false,error:'Signed out of this browser. We could not confirm server sign-out.'},503);
+ }
+}
 async function limitedJSON(response,max=65536,overflowStatus=503,allowError=false){
  if(!response.ok&&!allowError){await response.body?.cancel();throw new InputError('The service could not complete that request. Try again shortly.',response.status===429?429:503);}
  const reader=response.body?.getReader();if(!reader)throw new InputError('Empty service response.',503);let length=0,parts=[];
@@ -46,12 +72,7 @@ export async function handleCommunity(request,env,options={}){
   if(!permitted.has(url.origin))return answer({error:'This address is not enabled.'},403);
   if(!['GET','POST'].includes(method))return answer({error:'Method not allowed.'},405,{'Allow':'GET, POST'});
   if(method==='POST'&&(!permitted.has(request.headers.get('origin'))||request.headers.get('sec-fetch-site')==='cross-site'))return answer({error:'Request origin not accepted.'},403);
-  if(path==='/auth/signout'&&method==='POST'){
-   const response=answer({ok:true,message:'Signed out.'});response.headers.append('Set-Cookie',cookie(ACCESS,'',0));response.headers.append('Set-Cookie',cookie(REFRESH,'',0));
-   let token;try{token=decodeURIComponent(cookies(request)[ACCESS]||'');}catch{}
-   if(token&&env.SUPABASE_URL&&env.SUPABASE_PUBLISHABLE_KEY){try{const r=await send(settingURL(env,'SUPABASE_URL','/auth/v1/logout?scope=local'),{method:'POST',headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000),redirect:'error'});await r.body?.cancel();}catch{}}
-   return response;
-  }
+  if(path==='/auth/signout'&&method==='POST')return signout(request,env,send);
   const enabled=env.COMMUNITY_ENABLED==='true'&&env.COMMUNITY_LICENCE_ACCEPTED==='true';
   if(path==='/config'&&method==='GET')return answer({enabled,authEnabled:enabled&&env.COMMUNITY_AUTH_ENABLED==='true',sitekey:env.TURNSTILE_SITEKEY||'',termsVersion:'community-v1',stage:enabled?'pilot':'private preparation'});
   if(!enabled)return answer({error:'Community editing is being prepared. The existing feed remains available.'},503);

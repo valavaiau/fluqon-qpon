@@ -19,6 +19,14 @@ Accepted public attribution and edit history are retained while the contribution
 
 Provider logs and backups follow the providers' actual retention arrangements. Check those arrangements when handling a request; do not promise immediate removal from every provider backup or from copies made by others. Never copy live backups into the public repository.
 
+## Supplier email measurement
+
+Brevo's per-contact tracking-consent control is enabled, with unknown consent set to No. Personal open/click tracking is off by default, and contributor sign-in does not request tracking consent. The supplier still holds delivery records and may carry out aggregate delivery measurement. A delivered SMTP message can still contain a measurement image or rewritten link; the setting alone is not evidence that an email contains neither.
+
+Brevo's [tracking documentation](https://help.brevo.com/hc/en-us/articles/37114679474706-About-email-tracking-pixels-and-the-CNIL-recommendation-in-Brevo) distinguishes per-contact engagement from delivery measurement. It also says a contact's last-open date can update for delivery purposes without tracking consent. Do not promise that the supplier keeps no recipient-level operational records or that its inserted pixels are absent. The website's statement about no advertising pixels or tracking cookies applies to the website, not to everything an email supplier adds to a message.
+
+When changing sending settings or templates, check both the saved consent default and a real delivered message. Keep requested sign-in codes separate from marketing and do not add tracking-consent forms as part of account access.
+
 ## Release check
 
 Before opening contributor sign-in, verify the actual Supabase and Brevo configuration, requested-code delivery and applicable overseas processing disclosures. Keep marketing collection closed. Verify the existing contact mailbox provider before changing the provider named in the public privacy page; do not infer it from the sending address.

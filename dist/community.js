@@ -1,14 +1,14 @@
 import {FIELDS,fieldDiff,proposalInput,safeURL} from './community-policy.mjs';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const page=$('[data-community-page]')?.dataset.communityPage;
-let ownerKey='',baseRevision=0,originalExpiry='',originalExpiryField='',token='',widget,config,member,queue,activity=Date.now();
+let ownerKey='',baseRevision=0,originalExpiry='',originalExpiryField='',token='',widget,securityLoading,config,member,queue,activity=Date.now();
 const status=message=>{const el=$('#community-status');if(el)el.textContent=message;};
 const date=value=>new Intl.DateTimeFormat('en-AU',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value));
 async function api(path,data,retry=true){
  const response=await fetch('/api/community'+path,{method:data===undefined?'GET':'POST',cache:'no-store',credentials:'same-origin',headers:{...(data===undefined?{}:{'Content-Type':'application/json'}),...(ownerKey?{Authorization:'Bearer '+ownerKey}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});
  const result=await response.json();
  if(response.status===401&&retry&&!ownerKey&&config?.authEnabled&&!path.startsWith('/auth/')){try{await api('/auth/refresh',{},false);return api(path,data,false);}catch{}}
- if(!response.ok)throw Error(result.error||'Could not complete that request.');return result;
+ if(!response.ok){const error=Error(result.error||'Could not complete that request.');error.localSignedOut=result.localSignedOut===true;throw error;}return result;
 }
 async function run(action){status('Working…');try{const result=await action();status(result?.message||'Updated.');}catch(error){status(error.message);}}
 function diffHTML(before,after){return fieldDiff(before,after).map(c=>`<div class="change"><dt>${esc(c.field.replaceAll('_',' '))}</dt><dd><small>BEFORE</small>${['code','discount','expires_at'].includes(c.field)?`<span class="data">${esc(c.before===''?'Not set':c.before)}</span>`:esc(c.before===''?'Not set':c.before)}</dd><dd><small>PROPOSED</small>${['code','discount','expires_at'].includes(c.field)?`<span class="data">${esc(c.after===''?'Not set':c.after)}</span>`:esc(c.after===''?'Not set':c.after)}</dd></div>`).join('')||'<p>No field changes.</p>';}
@@ -17,9 +17,25 @@ function setDraft(offer,revision){
  baseRevision=revision;originalExpiry=offer.expires_at||'';originalExpiryField=form.elements.namedItem('expires_at').value;form.elements.namedItem('id').readOnly=revision>0;$('#base-revision').textContent=revision?`Editing revision ${revision} · live offer unchanged until review`:'New offer · revision 0';
 }
 function locked(){ownerKey='';queue=null;$('#review-key-form')?.reset();if($('#review-panel'))$('#review-panel').hidden=true;if($('#review-login'))$('#review-login').hidden=false;for(const id of ['#review-proposals','#review-notes','#member-list'])$(id)?.replaceChildren();}
+async function signInReady(){
+ if(!config.authEnabled||!$('#signin-panel')||$('#signin-panel').hidden)return;
+ if(widget!==undefined){token='';window.turnstile?.reset(widget);return;}
+ if(!window.turnstile){
+  securityLoading??=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';script.async=true;script.addEventListener('load',resolve);script.addEventListener('error',()=>{securityLoading=undefined;reject(Error('Security check could not load. Reload the page to try again.'));});document.head.append(script);});
+  await securityLoading;
+ }
+ widget=window.turnstile.render('#community-security',{sitekey:config.sitekey,action:'community_login',theme:'dark',callback:value=>{token=value;},'expired-callback':()=>{token='';}});
+}
+function signedOut(){
+ member=null;ownerKey='';token='';
+ $('#session-panel').hidden=true;$('#profile-panel').hidden=true;$('#contributor-panel').hidden=true;$('#signin-panel').hidden=false;$('#signin-form').hidden=!config.authEnabled;
+ for(const form of document.querySelectorAll('.community form'))form.reset();
+ $('#my-proposals').replaceChildren();$('#contributor-name').textContent='';setDraft({},0);
+}
 async function identity(){
  const state=await api('/me');member=state.member;
  if($('#signin-panel'))$('#signin-panel').hidden=true;
+ if($('#session-panel'))$('#session-panel').hidden=false;
  if($('#profile-panel'))$('#profile-panel').hidden=!!member;
  if($('#contributor-panel'))$('#contributor-panel').hidden=!member;
  if($('#contributor-name')&&member)$('#contributor-name').textContent=`${member.handle} · ${member.role}`;
@@ -49,6 +65,7 @@ async function init(){
   const id=new URL(location.href).searchParams.get('offer');if(id)await run(()=>showHistory(id));return;
  }
  if(page==='community-review'){
+  $('#review-login').hidden=false;
   $('#review-key-form').addEventListener('submit',e=>{e.preventDefault();ownerKey=e.target.elements.namedItem('key').value;e.target.reset();void run(async()=>{try{await loadQueue();return {message:'Review desk unlocked.'};}catch(error){locked();throw error;}});});
   $('#review-session').addEventListener('click',()=>void run(async()=>{ownerKey='';await loadQueue();return {message:'Reviewer session ready.'};}));
   $('#refresh-queue').addEventListener('click',()=>void run(loadQueue));$('#lock-review').addEventListener('click',()=>{locked();status('Review desk locked.');});
@@ -56,12 +73,11 @@ async function init(){
   $('#review-panel').addEventListener('click',e=>{const b=e.target.closest('[data-note]');if(b)void run(async()=>{const result=await api('/moderate-note',{id:b.dataset.note,status:b.dataset.decision});await loadQueue();return result;});});return;
  }
  try{await identity();}catch{if($('#signin-panel'))$('#signin-panel').hidden=false;}
- if(config.authEnabled&&$('#signin-panel')&&!$('#signin-panel').hidden){
-  const script=document.createElement('script');script.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';script.async=true;script.addEventListener('load',()=>{widget=window.turnstile.render('#community-security',{sitekey:config.sitekey,action:'community_login',theme:'dark',callback:value=>{token=value;},'expired-callback':()=>{token='';}});});document.head.append(script);
- }else if(!member&&!config.localPreview){$('#signin-form').hidden=true;status('Contributor email sign-in is not open yet.');}
+ if(config.authEnabled&&$('#signin-panel')&&!$('#signin-panel').hidden){void signInReady().catch(error=>status(error.message));}
+ else if(!config.authEnabled&&!member&&!config.localPreview){$('#signin-form').hidden=true;status('Contributor email sign-in is not open yet.');}
  $('#signin-form').addEventListener('submit',e=>{e.preventDefault();const intent=e.submitter.value,data=Object.fromEntries(new FormData(e.target));void run(async()=>{const result=await api('/auth/'+(intent==='request'?'request':'verify'),{email:data.email,token:data.token,turnstile:token});if(intent==='verify'){e.target.reset();await identity();}return result;}).finally(()=>{token='';if(widget!==undefined)window.turnstile?.reset(widget);});});
  $('#profile-form').addEventListener('submit',e=>{e.preventDefault();void run(async()=>{const result=await api('/profile',{handle:e.target.elements.namedItem('handle').value,consent:e.target.elements.namedItem('consent').checked,terms_version:config.termsVersion});await identity();return result;});});
- $('#signout').addEventListener('click',()=>void run(async()=>{const result=await api('/auth/signout',{});location.reload();return result;}));
+ $('#signout').addEventListener('click',()=>void run(async()=>{let result;try{result=await api('/auth/signout',{});}catch(error){if(!error.localSignedOut)throw error;result={message:error.message};}signedOut();void signInReady().catch(error=>status(result.message+' '+error.message));return result;}));
  $('#clear-draft').addEventListener('click',()=>setDraft({},0));
  async function loadOffer(id){const current=await api('/draft?id='+encodeURIComponent(id));let offer=current.offer;const restoring=Number(new URL(location.href).searchParams.get('restore'));if(restoring){const history=await api('/history?id='+encodeURIComponent(id));const old=history.revisions.find(r=>r.revision===restoring&&!r.redacted);if(!old)throw Error('That revision is not available.');offer=old.snapshot;status(`Restoring revision ${restoring} as a proposal against current revision ${current.revision}. Update expired dates and explain the reason.`);}setDraft(offer,current.revision);$('#existing-offer').value=id;return {message:restoring?`Earlier revision loaded against current revision ${current.revision}. Update expired dates and explain your restoration.`:'Latest revision loaded. Your changes will be reviewed.'};}
  $('#load-form').addEventListener('submit',e=>{e.preventDefault();void run(()=>loadOffer(new FormData(e.target).get('id')));});

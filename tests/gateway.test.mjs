@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {handleCommunity} from '../server/community.mjs';
-import {fixture,submit,AUTHOR} from './database.mjs';
+import {fixture,submit,AUTHOR,SESSIONS,sessionToken} from './database.mjs';
 const hash=async value=>Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))).toString('hex');
 const env={PUBLIC_ORIGIN:'https://fluqon.qpon',BACKEND_URL:'https://backend.invalid/endpoint',SUPABASE_URL:'https://auth.invalid',SUPABASE_PUBLISHABLE_KEY:'public-test-key',COMMUNITY_ENABLED:'true',COMMUNITY_LICENCE_ACCEPTED:'true',COMMUNITY_AUTH_ENABLED:'true',API_GATEWAY_KEY:'b'.repeat(64),TURNSTILE_SECRET:'test-only'};
 function request(path,data,headers={}){return new Request('https://fluqon.qpon/api/community'+path,{method:data===undefined?'GET':'POST',headers:{...(data===undefined?{}:{'Content-Type':'application/json',Origin:'https://fluqon.qpon'}),...headers},...(data===undefined?{}:{body:JSON.stringify(data)})});}
@@ -23,11 +23,12 @@ test('cross-origin writes and oversized/malformed input cannot reach a backend',
 });
 test('server resolves identity; forged roles/actors and evidence cannot authorise publication',async()=>{
  const calls=[],send=transport(calls);
- const r=await handleCommunity(request('/submit',{...submit(),actor_id:'forged',operator_access:true,role:'maintainer'},{Cookie:'__Host-fluqon-access=test'}),env,{fetch:send});assert.equal(r.status,200);
+ const r=await handleCommunity(request('/submit',{...submit(),actor_id:'forged',session_id:'forged',_session_id:'forged',operator_access:true,role:'maintainer'},{Cookie:'__Host-fluqon-access='+sessionToken()}),env,{fetch:send});assert.equal(r.status,200);
  const payload=JSON.parse(calls.find(c=>new URL(c.url).hostname==='backend.invalid').init.body);
  assert.equal(payload.data.actor_id,AUTHOR);assert.equal(payload.data.operator_access,false);assert.equal(payload.data.operation,'submit');assert(!('actor_id' in payload.data.payload));
+ assert.equal(payload.data.session_id,SESSIONS[AUTHOR]);assert(!('_session_id' in payload.data.payload));
  calls.length=0;
- assert.equal((await handleCommunity(request('/submit',submit(fixture({status:'published'})),{Cookie:'__Host-fluqon-access=test'}),env,{fetch:send})).status,400);
+ assert.equal((await handleCommunity(request('/submit',submit(fixture({status:'published'})),{Cookie:'__Host-fluqon-access='+sessionToken()}),env,{fetch:send})).status,400);
  assert(!calls.some(c=>new URL(c.url).hostname==='backend.invalid'));
 });
 test('unconfirmed and anonymous auth users are refused before private data access',async()=>{

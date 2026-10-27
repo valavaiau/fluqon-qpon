@@ -56,7 +56,7 @@ select o.id,o.revision,greatest(o.revision-1,0),fluqon_community.snapshot(o),o.m
  'Existing published offer; imported before community editing.',o.check_method,o.checked_at
 from fluqon_private.offers o where o.status='published';
 
--- Actor and operator_access are asserted by the authenticated Pages/Edge gateway, never by browser JSON.
+-- Actor, session metadata and operator_access are asserted by the authenticated Pages/Edge gateway, never by browser JSON.
 -- Service-role-only EXECUTE plus the separate gateway hash are both required.
 create function public.fluqon_community_gateway(gateway_hash text,operation text,payload jsonb default '{}',actor_id uuid default null,client_bucket text default '',operator_access boolean default false)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -90,6 +90,18 @@ begin
     (select t.id,t.body,t.created_at,cm.handle from fluqon_community.notes t join fluqon_community.members cm on cm.user_id=t.author_id
      where t.offer_id=payload->>'id' and t.status='approved' order by t.created_at desc limit 50) x),'[]'));
  end if;
+ -- Recheck the accepted JWT's session inside the same RPC as each protected operation.
+ operator_access:=operator_access is true;
+ if operator_access is not true then
+  if actor_id is null or jsonb_typeof(payload->'_session_id') is distinct from 'string' or
+   (payload->>'_session_id')!~*'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' then
+   return jsonb_build_object('error','Your contributor session ended. Sign in again.','status',401);end if;
+  if not exists(select 1 from auth.sessions a where a.id=(payload->>'_session_id')::uuid and a.user_id=actor_id
+   and (a.not_after is null or a.not_after>clock_timestamp())) then
+   return jsonb_build_object('error','Your contributor session ended. Sign in again.','status',401);end if;
+ end if;
+ -- Never persist the session identifier in contribution content or audit payloads.
+ payload:=payload-'_session_id';
  if actor_id is not null then select * into m from fluqon_community.members where user_id=actor_id;end if;
  if not operator_access and actor_id is null then return jsonb_build_object('error','Sign in to contribute.','status',401);end if;
  if not operator_access and coalesce(m.blocked,false) then return jsonb_build_object('error','Contributions are paused for this account.','status',403);end if;

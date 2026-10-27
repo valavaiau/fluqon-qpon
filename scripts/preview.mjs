@@ -1,7 +1,7 @@
 // Loopback-only disposable integration preview. All identities/offers are test fixtures.
 // Never deploy this adapter, its simulated identity, or its key to Cloudflare.
 import http from 'node:http';import {readFile} from 'node:fs/promises';import path from 'node:path';import {fileURLToPath} from 'node:url';
-import {database,fixture,submit,approve,AUTHOR,HASH} from '../tests/database.mjs';
+import {database,fixture,submit,approve,AUTHOR,HASH,sessionToken} from '../tests/database.mjs';
 import {handleCommunity} from '../server/community.mjs';
 const root=fileURLToPath(new URL('../dist/',import.meta.url)),port=Number(process.env.PORT||4173);
 const {db,rpc}=await database();const key='1'.repeat(64);const keyHash=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key))).toString('hex');
@@ -13,7 +13,7 @@ const send=async(url,init={})=>{
  if(u.hostname==='preview-auth.invalid'&&u.pathname==='/auth/v1/user')return Response.json({id:AUTHOR,email_confirmed_at:'2026-10-23T00:00:00Z',is_anonymous:false});
  if(u.hostname==='preview-backend.invalid'){
   const call=JSON.parse(init.body),d=call.data;
-  const result=await rpc(d.operation,d.payload,d.actor_id,d.operator_access,call.bucket||'b'.repeat(64));
+  const result=await rpc(d.operation,d.payload,d.actor_id,d.operator_access,call.bucket||'b'.repeat(64),HASH,d.session_id??null);
   return Response.json(result,{status:result.error?result.status||400:200});
  }
  throw Error('Local preview does not make external requests.');
@@ -24,7 +24,7 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,env.PUBLIC_ORIGIN);if(url.origin!==env.PUBLIC_ORIGIN){res.writeHead(400);return res.end();}
   if(url.pathname.startsWith('/api/community/')){
    let size=0,chunks=[];for await(const part of req){size+=part.length;if(size>16000){res.writeHead(413);return res.end();}chunks.push(part);}
-   const headers=new Headers(req.headers);if(!headers.has('authorization'))headers.set('cookie','__Host-fluqon-access=local-fixture');
+   const headers=new Headers(req.headers);if(!headers.has('authorization'))headers.set('cookie','__Host-fluqon-access='+sessionToken());
    const request=new Request(url,{method:req.method,headers,...(!['GET','HEAD'].includes(req.method)?{body:Buffer.concat(chunks)}:{})});
    let response=await handleCommunity(request,env,{fetch:send});
    if(url.pathname==='/api/community/config'){const value=await response.json();response=Response.json({...value,localPreview:true});}

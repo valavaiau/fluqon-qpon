@@ -29,6 +29,7 @@ function fieldDiff(before={},after={}){return FIELDS.filter(k=>JSON.stringify(be
 
 const COMMUNITY_HEADERS={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Vary':'Cookie, Authorization','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"};
 const ACCESS='__Host-fluqon-access',REFRESH='__Host-fluqon-refresh';
+const COMMUNITY_UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function answer(data,status=200,headers={}){return Response.json(data,{status,headers:{...COMMUNITY_HEADERS,...headers}});}
 function cookies(request){const result={};for(const pair of (request.headers.get('cookie')||'').split(';')){const i=pair.indexOf('=');if(i>0)result[pair.slice(0,i).trim()]=pair.slice(i+1);}return result;}
 function cookie(name,value,age){return `${name}=${encodeURIComponent(value)}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${age}`;}
@@ -84,12 +85,20 @@ async function user(request,env,send){
  const response=await send(settingURL(env,'SUPABASE_URL','/auth/v1/user'),{headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY,Authorization:'Bearer '+token},signal:AbortSignal.timeout(10000),redirect:'error'});
  if(!response.ok){await response.body?.cancel();throw new InputError('Your contributor session ended. Sign in again.',401);}
  const data=await limitedJSON(response);
- if(!/^[a-f0-9-]{36}$/i.test(data.id)||data.is_anonymous===true||!data.email_confirmed_at)throw new InputError('A confirmed contributor account is required.',403);
- return data.id;
+ if(typeof data.id!=='string'||!COMMUNITY_UUID.test(data.id)||data.is_anonymous===true||!data.email_confirmed_at)throw new InputError('A confirmed contributor account is required.',403);
+ // Decode only after Auth has accepted this exact token; decoding alone never authenticates it.
+ let claims;
+ try{
+  const parts=token.split('.');if(parts.length!==3||parts.some(part=>!part||!/^[A-Za-z0-9_-]+$/.test(part)))throw new Error('invalid_token');
+  const encoded=parts[1].replace(/-/g,'+').replace(/_/g,'/');
+  claims=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(encoded.padEnd(Math.ceil(encoded.length/4)*4,'=')),x=>x.charCodeAt(0))));
+ }catch{throw new InputError('Your contributor session ended. Sign in again.',401);}
+ if(!claims||typeof claims!=='object'||Array.isArray(claims)||claims.sub!==data.id||typeof claims.session_id!=='string'||!COMMUNITY_UUID.test(claims.session_id))throw new InputError('Your contributor session ended. Sign in again.',401);
+ return {id:data.id,sessionId:claims.session_id};
 }
-async function communityRPC(env,operation,payload={},actor=null,bucket='',operator=false,send=fetch){
+async function communityRPC(env,operation,payload={},actor=null,bucket='',operator=false,send=fetch,sessionId=null){
  if(!env.BACKEND_URL||!env.API_GATEWAY_KEY)throw new InputError('Community service is not connected yet.',503);
- const response=await send(env.BACKEND_URL,{method:'POST',headers:{'Content-Type':'application/json','x-fluqon-gateway':env.API_GATEWAY_KEY},body:JSON.stringify({action:'community',data:{operation,payload,actor_id:actor,operator_access:operator},bucket}),signal:AbortSignal.timeout(15000),redirect:'error'});
+ const response=await send(env.BACKEND_URL,{method:'POST',headers:{'Content-Type':'application/json','x-fluqon-gateway':env.API_GATEWAY_KEY},body:JSON.stringify({action:'community',data:{operation,payload,actor_id:actor,session_id:sessionId,operator_access:operator},bucket}),signal:AbortSignal.timeout(15000),redirect:'error'});
  const result=await limitedJSON(response,1024*1024,503,true);if(result.error)throw new InputError(result.error,result.status||(response.status>=400?response.status:400));if(!response.ok)throw new InputError('Community service unavailable.',response.status>=500?503:response.status);return result;
 }
 async function handleCommunity(request,env,options={}){
@@ -103,7 +112,7 @@ async function handleCommunity(request,env,options={}){
   const enabled=env.COMMUNITY_ENABLED==='true'&&env.COMMUNITY_LICENCE_ACCEPTED==='true';
   if(path==='/config'&&method==='GET')return answer({enabled,authEnabled:enabled&&env.COMMUNITY_AUTH_ENABLED==='true',sitekey:env.TURNSTILE_SITEKEY||'',termsVersion:'community-v1',stage:enabled?'pilot':'private preparation'});
   if(!enabled)return answer({error:'Community editing is being prepared. The existing feed remains available.'},503);
-  const rpc=(op,payload={},actor=null,bucket='',operator=false)=>communityRPC(env,op,payload,actor,bucket,operator,send);
+  const rpc=(op,payload={},actor=null,bucket='',operator=false,sessionId=null)=>communityRPC(env,op,payload,actor,bucket,operator,send,sessionId);
   if(path==='/history'&&method==='GET')return answer(await rpc('history',{id:url.searchParams.get('id')||''}));
   let data=method==='POST'?await body(request):{};
   const bucketKey=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.API_GATEWAY_KEY||''),{name:'HMAC',hash:'SHA-256'},false,['sign']);
@@ -138,10 +147,10 @@ async function handleCommunity(request,env,options={}){
    if(!r.ok){await r.body?.cancel();throw new InputError('Sign in again.',401);}return sessionResponse({ok:true},await limitedJSON(r));
   }
   const operator=await matchKey(request.headers.get('authorization')?.replace(/^Bearer /,''),env.ADMIN_KEY_HASH);
-  const actor=operator?null:await user(request,env,send);
-  if(path==='/me'&&method==='GET')return answer(operator?{member:{handle:'operator',role:'maintainer'},proposals:[]}:await rpc('me',{},actor));
-  if(path==='/draft'&&method==='GET')return answer(await rpc('draft',{id:url.searchParams.get('id')||''},actor,bucket,operator));
-  if(path==='/queue'&&method==='GET')return answer(await rpc('queue',{},actor,bucket,operator));
+  const identity=operator?null:await user(request,env,send),actor=identity?.id||null,sessionId=identity?.sessionId||null;
+  if(path==='/me'&&method==='GET')return answer(operator?{member:{handle:'operator',role:'maintainer'},proposals:[]}:await rpc('me',{},actor,bucket,false,sessionId));
+  if(path==='/draft'&&method==='GET')return answer(await rpc('draft',{id:url.searchParams.get('id')||''},actor,bucket,operator,sessionId));
+  if(path==='/queue'&&method==='GET')return answer(await rpc('queue',{},actor,bucket,operator,sessionId));
   if(method!=='POST')return answer({error:'Not found.'},404);
   let operation,payload;
   if(path==='/profile'){
@@ -162,7 +171,7 @@ async function handleCommunity(request,env,options={}){
   else if(path==='/moderate-note'){operation='moderate_note';payload={id:data.id,status:data.status};}
   else if(path==='/redact'){operation='redact';payload={id:data.id,revision:data.revision,reason:data.reason};}
   else return answer({error:'Not found.'},404);
-  return answer(await rpc(operation,payload,actor,bucket,operator));
+  return answer(await rpc(operation,payload,actor,bucket,operator,sessionId));
  }catch(error){return answer({error:error instanceof InputError?error.message:'Could not complete that request. Try again shortly.'},error instanceof InputError?error.status:503);}
 }
 

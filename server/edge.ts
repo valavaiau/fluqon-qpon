@@ -17,7 +17,10 @@ Deno.serve(async request=>{
   let result;
   if(action==='community'){
    const entry=data as Record<string,unknown>;
-   const response=await fetch(Deno.env.get('SUPABASE_URL')+'/rest/v1/rpc/fluqon_community_gateway',{method:'POST',headers,body:JSON.stringify({gateway_hash:await digest(key),operation:entry.operation,payload:entry.payload,actor_id:entry.actor_id,client_bucket:typeof bucket==='string'?bucket:'',operator_access:entry.operator_access===true}),signal:AbortSignal.timeout(12000)});
+   if(!entry.payload||typeof entry.payload!=='object'||Array.isArray(entry.payload))return reply({error:'Invalid request'},400);
+   // The authenticated Pages envelope owns this metadata; nested contribution fields cannot supply it.
+   const payload={...(entry.payload as Record<string,unknown>),_session_id:typeof entry.session_id==='string'?entry.session_id:null};
+   const response=await fetch(Deno.env.get('SUPABASE_URL')+'/rest/v1/rpc/fluqon_community_gateway',{method:'POST',headers,body:JSON.stringify({gateway_hash:await digest(key),operation:entry.operation,payload,actor_id:entry.actor_id,client_bucket:typeof bucket==='string'?bucket:'',operator_access:entry.operator_access===true}),signal:AbortSignal.timeout(12000)});
    if(!response.ok)throw new Error('community_database');result=await response.json();
   }else result=await rpc(action,data,typeof bucket==='string'?bucket:'');
   if(result?.error)return reply({error:result.error},result.status||400);
